@@ -1,0 +1,457 @@
+---
+title: "Peak_listing_2_new_code_combined"
+author: "Divyanshi"
+date: "2024-08-16"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+#### Standard things to always load
+```{r}
+library(pacman)
+p_load(pacman,rmarkdown,rstudioapi,reshape2,ggplot2,dplyr,plotly,viridis,data.table,pheatmap,
+      tidyverse,ggthemes,clipr,tidyr,matrixStats,cowplot,genefilter,scales,ggrepel,ggsci)
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+    #install.packages("BiocManager")
+#BiocManager::install("genefilter")
+
+setwd(dirname(getActiveDocumentContext()$path))    
+knitr::opts_chunk$set(echo = TRUE, message=FALSE,warning=FALSE,collapse = TRUE)
+
+#no need to load colours
+```
+
+##Open the mzML files
+```{r}
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+    #install.packages("BiocManager")
+library(BiocManager)
+#BiocManager::install("mzR", lib = "~/R/library", force = TRUE) 
+
+library("mzR")
+
+#Let's open each file
+no_BSA_1 <- openMSfile("zero_BSA_1.mzML") 
+no_BSA_2 <- openMSfile("zero_BSA_2.mzML")
+five_BSA_1 <- openMSfile("five_BSA_1.mzML")
+five_BSA_2 <- openMSfile("five_BSA_2.mzML")
+fifty_BSA_1 <- openMSfile("fifty_BSA_1.mzML")
+fifty_BSA_2 <- openMSfile("fifty_BSA_2.mzML")
+
+```
+
+#Extract header data 
+```{r}
+#These take a couple 10s of seconds each
+header_no_BSA_1 <- header(no_BSA_1)
+header_no_BSA_2 <- header(no_BSA_2)
+header_five_BSA_1 <- header(five_BSA_1)
+header_five_BSA_2 <- header(five_BSA_2)
+header_fifty_BSA_1 <- header(fifty_BSA_1)
+header_fifty_BSA_2 <- header(fifty_BSA_2)
+
+#Filter header data by MS2, precursor m/z and acquisition (scan) number
+filter_no_BSA_1 <- header_no_BSA_1 %>% filter(msLevel == 2) %>% select(acquisitionNum, precursorMZ, msLevel)
+
+filter_no_BSA_2 <- header_no_BSA_2 %>% filter(msLevel == 2) %>% select(acquisitionNum, precursorMZ, msLevel)
+
+filter_five_BSA_1 <- header_five_BSA_1 %>% filter(msLevel == 2) %>% select(acquisitionNum, precursorMZ, msLevel)
+
+filter_five_BSA_2 <- header_five_BSA_2 %>% filter(msLevel == 2) %>% select(acquisitionNum, precursorMZ, msLevel)
+
+filter_fifty_BSA_1 <- header_fifty_BSA_1 %>% filter(msLevel == 2) %>% select(acquisitionNum, precursorMZ, msLevel)
+
+filter_fifty_BSA_2 <- header_fifty_BSA_2 %>% filter(msLevel == 2) %>% select(acquisitionNum, precursorMZ, msLevel)
+
+```
+
+#18/8/2024 - Extract peaks from mzML files
+```{r}
+#Pull acquisition numbers for each filtered object from header dataset
+acq_no_BSA_1 <- filter_no_BSA_1 %>% pull(acquisitionNum)
+
+acq_no_BSA_2 <- filter_no_BSA_2 %>% pull(acquisitionNum)
+
+acq_five_BSA_1 <- filter_five_BSA_1 %>% pull(acquisitionNum)
+
+acq_five_BSA_2 <- filter_five_BSA_2 %>% pull(acquisitionNum)
+
+acq_fifty_BSA_1 <- filter_fifty_BSA_1 %>% pull(acquisitionNum)
+
+acq_fifty_BSA_2 <- filter_fifty_BSA_2 %>% pull(acquisitionNum)
+
+
+#For one mzML file
+#Both peaks_ and peaks_df objects takes 10s of seconds each.
+#Extract peak lists from acquisition numbers filtered by MS2 in the header data:
+peaks_no_BSA_1 <- acq_no_BSA_1 %>%
+lapply(function(scan) peaks(no_BSA_1, scan)) #This code means that for my pulled out acquisition numbers from the header data, extract my peaks and call the values to an argument called 'scan'
+
+# Combine peaks and acquisition numbers into a data frame
+peaks_df_no_BSA_1 <- acq_no_BSA_1 %>%
+lapply(function(scan) peaks(no_BSA_1, scan) %>%
+as.data.frame() %>%
+mutate(acquisitionNum = scan)) %>% #creating the acquisitionNum column and assigning the value obtained from the scan function to it
+bind_rows()
+#NB - I can't use the peaks_no_BSA_1 object directly here, R gives an error - it will CRASH. Notes on this on my Notion. So take the peaks_no_BSA_1 object as a 'trial' to see if R is able to get all the peaks, then run the peaks_df objects to see those peaks in numeric form. 
+
+#For the rest of the mzML files #Finally doing this on 24-9-2024!
+peaks_no_BSA_2 <- acq_no_BSA_2 %>% 
+  lapply(function(scan) peaks(no_BSA_2, scan))
+
+peaks_df_no_BSA_2 <- acq_no_BSA_2 %>% 
+  lapply(function(scan) peaks(no_BSA_2, scan) %>%
+           as.data.frame() %>%
+           mutate(acquisitionNum = scan)) %>%
+  bind_rows() 
+
+peaks_five_BSA_1 <- acq_five_BSA_1 %>% 
+  lapply(function(scan) peaks(five_BSA_1, scan))
+
+peaks_df_five_BSA_1 <- acq_five_BSA_1 %>% 
+  lapply(function(scan) peaks(five_BSA_1, scan) %>%
+           as.data.frame() %>%
+           mutate(acquisitionNum = scan)) %>% 
+  bind_rows()
+
+peaks_five_BSA_2 <- acq_five_BSA_2 %>% 
+  lapply(function(scan) peaks(five_BSA_2, scan))
+
+peaks_df_five_BSA_2 <- acq_five_BSA_2 %>% 
+  lapply(function(scan) peaks(five_BSA_2, scan) %>%
+           as.data.frame() %>%
+           mutate(acquisitionNum = scan)) %>% 
+  bind_rows()
+
+peaks_fifty_BSA_1 <- acq_fifty_BSA_1 %>% 
+  lapply(function(scan) peaks(fifty_BSA_1, scan))
+
+peaks_df_fifty_BSA_1 <- acq_fifty_BSA_1 %>% 
+  lapply(function(scan) peaks(fifty_BSA_1, scan) %>% as.data.frame() %>%
+    mutate(acquisitionNum = scan)) %>% 
+  bind_rows()
+
+peaks_fifty_BSA_2 <- acq_fifty_BSA_2 %>% 
+  lapply(function(scan) peaks(fifty_BSA_2, scan))
+
+peaks_df_fifty_BSA_2 <- acq_fifty_BSA_2 %>% 
+  lapply(function(scan) peaks(fifty_BSA_2, scan) %>% as.data.frame() %>%
+    mutate(acquisitionNum = scan)) %>% 
+  bind_rows()
+
+```
+
+#Create final data frame merging the header and peaks data
+```{r}
+
+no_BSA_1_final_df <- peaks_df_no_BSA_1 %>% left_join(filter_no_BSA_1, by = "acquisitionNum")
+#write_csv(no_BSA_1_final_df, "check.csv") #18/4/2025 - realised that precursorMZ and mz have 15 decimal places - need to round to 3dp.
+
+#Finally doing it for the other files, too!
+no_BSA_2_final_df <- peaks_df_no_BSA_2 %>% left_join(filter_no_BSA_2, by = "acquisitionNum")
+
+five_BSA_1_final_df <- peaks_df_five_BSA_1 %>% left_join(filter_five_BSA_1, by = "acquisitionNum")
+
+five_BSA_2_final_df <- peaks_df_five_BSA_2 %>% left_join(filter_five_BSA_2, by = "acquisitionNum")
+
+fifty_BSA_1_final_df <- peaks_df_fifty_BSA_1 %>% left_join(filter_fifty_BSA_1, by = "acquisitionNum")
+
+fifty_BSA_2_final_df <- peaks_df_fifty_BSA_2 %>% left_join(filter_fifty_BSA_2, by = "acquisitionNum")
+
+```
+
+#18/4/2025- Taking into account fragment mass tolerance in the actual datasets only - redo after losing code!
+```{r}
+
+#Add limits first, round after that. This order is important otherwise it's all wrong. 
+no_BSA_1_mz_limits <- no_BSA_1_final_df %>% mutate(mz_upper = mz + 0.02,
+                                                   mz_lower = mz - 0.02,
+                                                   precursorMZ_upper = precursorMZ + 0.02,
+                                                   precursorMZ_lower = precursorMZ - 0.02) 
+
+no_BSA_1_mz_limits_rounded <- no_BSA_1_mz_limits %>% 
+mutate(precursorMZ_upper_rounded = round(precursorMZ_upper, 3),
+       precursorMZ_lower_rounded = round(precursorMZ_lower, 3),
+       precursorMZ_rounded = round(precursorMZ, 3),
+       mz_rounded = round(mz, 3),
+       mz_upper_rounded = round(mz_upper, 3),
+       mz_lower_rounded = round(mz_lower, 3))
+
+
+#Doing for the rest of the files later #Finally doing it on 25/5/2025:
+no_BSA_2_mz_limits <- no_BSA_2_final_df %>% mutate(mz_upper = mz + 0.02,
+                                                   mz_lower = mz - 0.02,
+                                                   precursorMZ_upper = precursorMZ + 0.02,
+                                                   precursorMZ_lower = precursorMZ - 0.02)
+
+no_BSA_2_mz_limits_rounded <- no_BSA_2_mz_limits %>% 
+ mutate(precursorMZ_upper_rounded = round(precursorMZ_upper, 3),
+       precursorMZ_lower_rounded = round(precursorMZ_lower, 3),
+       precursorMZ_rounded = round(precursorMZ, 3),
+       mz_rounded = round(mz, 3),
+       mz_upper_rounded = round(mz_upper, 3),
+       mz_lower_rounded = round(mz_lower, 3)) 
+
+five_BSA_1_mz_limits <- five_BSA_1_final_df %>% mutate(mz_upper = mz + 0.02,
+                                                   mz_lower = mz - 0.02,
+                                                   precursorMZ_upper = precursorMZ + 0.02,
+                                                   precursorMZ_lower = precursorMZ - 0.02)
+
+five_BSA_1_mz_limits_rounded <- five_BSA_1_mz_limits %>% 
+  mutate(precursorMZ_upper_rounded = round(precursorMZ_upper, 3),
+       precursorMZ_lower_rounded = round(precursorMZ_lower, 3),
+       precursorMZ_rounded = round(precursorMZ, 3),
+       mz_rounded = round(mz, 3),
+       mz_upper_rounded = round(mz_upper, 3),
+       mz_lower_rounded = round(mz_lower, 3))
+
+five_BSA_2_mz_limits <- five_BSA_2_final_df %>% mutate(mz_upper = mz + 0.02,
+                                                   mz_lower = mz - 0.02,
+                                                   precursorMZ_upper = precursorMZ + 0.02,
+                                                   precursorMZ_lower = precursorMZ - 0.02)
+
+
+five_BSA_2_mz_limits_rounded <- five_BSA_2_mz_limits %>% 
+  mutate(precursorMZ_upper_rounded = round(precursorMZ_upper, 3),
+       precursorMZ_lower_rounded = round(precursorMZ_lower, 3),
+       precursorMZ_rounded = round(precursorMZ, 3),
+       mz_rounded = round(mz, 3),
+       mz_upper_rounded = round(mz_upper, 3),
+       mz_lower_rounded = round(mz_lower, 3))
+
+fifty_BSA_1_mz_limits <- fifty_BSA_1_final_df %>% mutate(mz_upper = mz + 0.02,
+                                                   mz_lower = mz - 0.02,
+                                                   precursorMZ_upper = precursorMZ + 0.02,
+                                                   precursorMZ_lower = precursorMZ - 0.02)
+
+fifty_BSA_1_mz_limits_rounded <- fifty_BSA_1_mz_limits %>% 
+   mutate(precursorMZ_upper_rounded = round(precursorMZ_upper, 3),
+       precursorMZ_lower_rounded = round(precursorMZ_lower, 3),
+       precursorMZ_rounded = round(precursorMZ, 3),
+       mz_rounded = round(mz, 3),
+       mz_upper_rounded = round(mz_upper, 3),
+       mz_lower_rounded = round(mz_lower, 3))
+
+fifty_BSA_2_mz_limits <- fifty_BSA_2_final_df %>% mutate(mz_upper = mz + 0.02,
+                                                   mz_lower = mz - 0.02,
+                                                   precursorMZ_upper = precursorMZ + 0.02,
+                                                   precursorMZ_lower = precursorMZ - 0.02)
+
+fifty_BSA_2_limits_rounded <- fifty_BSA_2_mz_limits %>% 
+  mutate(precursorMZ_upper_rounded = round(precursorMZ_upper, 3),
+       precursorMZ_lower_rounded = round(precursorMZ_lower, 3),
+       precursorMZ_rounded = round(precursorMZ, 3),
+       mz_rounded = round(mz, 3),
+       mz_upper_rounded = round(mz_upper, 3),
+       mz_lower_rounded = round(mz_lower, 3))
+
+
+```
+
+#12/9/2024 - Bringing in simulated b & y ions
+```{r}
+
+simulated_b_y <- read_csv(file = "final_simulated_ions_BSA_v2.csv") #29/1/2025 - updated with precursor mass column
+
+#18/4/2025 - Let's tidy it - redo after losing code
+simulated_b_y_final <- simulated_b_y %>% 
+  select(-c(b, y, `Precursor mass_2+`, `Precursor mass_3+`)) %>% 
+  pivot_longer(cols = c(b_rounded, y_rounded), names_to = "ion_type", values_to = "mz_simulated") %>% 
+  pivot_longer(cols = c(`#`, `#_backwards`), names_to = "amino acid position direction", values_to = "amino acid position number") %>% pivot_longer(cols = c(`precursor_2+_rounded`, `precursor_3+_rounded`), names_to = "precursor_charge", values_to = "precursor_mz") 
+
+```
+
+#23/4/2025 - Precursor masses match using this method. 
+#NB - this code is not required. It's a trial to see how the map_dfr() works in matching precursors. 
+#Skip to the next chunk to see the actual matching by both precursors and their associated b- and y-ions by LINKING them on R.
+```{r}
+
+# Get unique precursor m/z values from the simulated BSA data
+bsa_precursors <- simulated_b_y_final %>% distinct(precursor_mz)
+
+library(purrr)
+
+#Rather than looking at values of a column as a vector, we are looking through the rows, so we use map_drf()
+no_BSA_1_matched_rows <- map_dfr(bsa_precursors$precursor_mz, function(precursor_matching) {
+  no_BSA_1_mz_limits_rounded %>%
+    filter(precursor_matching == precursorMZ_rounded |
+           precursor_matching == precursorMZ_lower_rounded |
+           precursor_matching == precursorMZ_upper_rounded) %>%
+    mutate(precursor_mz_match = precursor_matching)}) #As we are filtering, the number of rows decreases from 12 million + to ~ 35,000 rows. 
+
+indicate_precursor_matched_rows_no_BSA_1 <- no_BSA_1_matched_rows %>%   
+  mutate(match_type = case_when(precursor_mz_match == precursorMZ_rounded ~ "exact",
+                                precursor_mz_match == precursorMZ_lower_rounded ~ "lower_limit",
+                                precursor_mz_match == precursorMZ_upper_rounded ~ "upper_limit",
+                                TRUE ~ "no_match"))
+
+#?match() #%in% doesn't work - R crashes
+#any() is also wrong because although we say rowwise(), it still works with all the rows within a column as a vector
+
+
+```
+
+#20/5/2025 - This is the code to actually match precursors and their associated b- and y-ions 
+```{r}
+
+library(purrr)
+
+#First, link simulated BSA precursors to their associated mz masses by writing a function
+link_precursor_to_fragments_simulated_bsa <- function(simulated_data) {
+  simulated_b_y_final %>%
+    group_by(precursor_mz) %>%
+    summarise(predicted_mz_list = list(unique(mz_simulated))) %>% 
+    ungroup()
+}
+
+#The function above is then applied to give us a data frame with linked precursor_mz and b- and y-ions 
+linked_precursors_df <- link_precursor_to_fragments_simulated_bsa(simulated_b_y_final)
+
+#24/5/2025
+#Second, let's write the linked list into a looping function to get predicted fragments for a single precursor
+get_predicted_fragments_for_each_precursor <- function(linked_precursors_df, p_mz) {
+  linked_precursors_df %>%
+    filter(precursor_mz == p_mz) %>%
+    pull(predicted_mz_list) %>%
+    pluck(1)
+}
+
+#Now, this is the main function to match linked simulated BSA precursors to actual data
+match_linked_precursors_to_actual_data <- function(actual_data_match, linked_precursors_df) {
+  map_dfr(linked_precursors_df$precursor_mz, function(p_mz) {
+    predicted_mzs <- get_predicted_fragments_for_each_precursor(linked_precursors_df, p_mz)
+    
+    actual_data_match %>% 
+      filter(p_mz == precursorMZ_rounded |
+             p_mz == precursorMZ_lower_rounded |
+             p_mz == precursorMZ_upper_rounded) %>% 
+      mutate(precursor_mz_matched = p_mz,
+             fragment_mz_matched = case_when(mz_rounded %in% predicted_mzs ~ mz_rounded,
+                                             mz_lower_rounded %in% predicted_mzs ~ mz_lower_rounded,
+                                             mz_upper_rounded %in% predicted_mzs ~ mz_upper_rounded,
+                                             TRUE ~ NA_real_)) %>% 
+      mutate(precursor_match_type = case_when(precursor_mz_matched == precursorMZ_rounded ~ "exact",
+                                          precursor_mz_matched == precursorMZ_lower_rounded ~ "lower_limit",
+                                          precursor_mz_matched == precursorMZ_upper_rounded ~ "upper_limit",
+                                          TRUE ~ "no_match"),
+             fragment_match_type = case_when(fragment_mz_matched == mz_rounded ~ "exact",
+                                             fragment_mz_matched == mz_lower_rounded ~ "lower_limit",
+                                             fragment_mz_matched == mz_upper_rounded ~ "upper_limit",
+                                             TRUE ~ "no_match")) 
+    })
+} #25/5/2025 - still trying to understand the point of this code completely, but unfortunately this function is the shortest length I could bring it to, to do the precursor and associated b- and y-ion matching. I am quite confident that it works. 
+
+#Finally, use the above function to match with actual datasets:
+#This takes 1.5 - 2 mins (tried this 3 times)
+match_no_BSA_1 <- match_linked_precursors_to_actual_data (no_BSA_1_mz_limits_rounded, linked_precursors_df) 
+
+match_no_BSA_1 %>% group_by(fragment_mz_matched) %>% tally() #sanity check
+#match_no_BSA_1 %>% group_by(precursor_mz_matched) %>% tally()
+
+
+#25/5/2025 - Write for remaining files
+#This took 1.5 mins (tried it only once)
+match_no_BSA_2 <- match_linked_precursors_to_actual_data(no_BSA_2_mz_limits_rounded, linked_precursors_df) #as you type linked_precursors_df, you'll see two options. Choose the one that is denoted by {.GlobalEnv}
+
+match_no_BSA_1 %>% group_by(fragment_mz_matched) %>% tally()
+
+#This took ~ 1.5 mins
+match_five_BSA_1 <- match_linked_precursors_to_actual_data(five_BSA_1_mz_limits_rounded, linked_precursors_df)
+
+checking_five_BSA_1_matches <- match_five_BSA_1 %>% group_by(fragment_mz_matched) %>% tally()
+# Could have other sanity checks, leaving it here for now. 
+
+#This took ~ 1.5 mins
+match_five_BSA_2 <- match_linked_precursors_to_actual_data(five_BSA_2_mz_limits_rounded, linked_precursors_df)
+
+checking_five_BSA_2_matches <- match_five_BSA_2 %>% group_by(fragment_mz_matched) %>% tally()
+
+#This took 2 mins
+match_fifty_BSA_1 <- match_linked_precursors_to_actual_data(fifty_BSA_1_mz_limits_rounded, linked_precursors_df)
+
+checking_fifty_BSA_1_matches <- match_fifty_BSA_1 %>% group_by(fragment_mz_matched) %>% tally() 
+
+#This took 2 mins
+match_fifty_BSA_2 <- match_linked_precursors_to_actual_data(fifty_BSA_2_limits_rounded, linked_precursors_df)
+
+checking_fifty_BSA_2_matches <- match_fifty_BSA_2 %>% group_by(fragment_mz_matched) %>% tally() #I'm not seeing as many b- and y-ion matches as I'd like. I'm not sure if I have done this correctly thus far, maybe plot matches between the experiments, maybe?
+
+```
+
+#24/5/2025
+#Define 2-3 mz matches as 'is_bsa' or 'not_bsa'.
+```{r}
+
+#25/5/2025
+#Count the number of matched b- and y-ions per precursor
+match_counts_no_BSA_1 <- match_no_BSA_1 %>% 
+  filter(!is.na(fragment_mz_matched)) %>% 
+  group_by(precursor_mz_matched) %>% 
+  summarise(fragment_match_count = n())
+
+label_bsa_match_counts_no_BSA_1 <- match_counts_no_BSA_1 %>% 
+  mutate(potential_bsa = if_else(fragment_match_count >=2, "is_BSA", "not_BSA"))
+
+label_bsa_match_counts_no_BSA_1 %>% group_by(potential_bsa) %>% tally() #sanity check
+
+#For the remaining experiments
+match_counts_no_BSA_2 <- match_no_BSA_2 %>% 
+  filter(!is.na(fragment_mz_matched)) %>% 
+  group_by(precursor_mz_matched) %>% 
+  summarise(fragment_match_count = n())
+
+label_bsa_match_counts_no_BSA_2 <- match_counts_no_BSA_2 %>% 
+  mutate(potential_bsa = if_else(fragment_match_count >=2, "is_BSA", "not_BSA"))
+
+label_bsa_match_counts_no_BSA_2 %>% group_by(potential_bsa) %>% tally()
+
+match_counts_five_BSA_1 <- match_five_BSA_1 %>% 
+  filter(!is.na(fragment_mz_matched)) %>% 
+  group_by(precursor_mz_matched) %>% 
+  summarise(fragment_match_count = n())
+
+label_bsa_match_counts_five_BSA_1 <- match_counts_five_BSA_1 %>% 
+  mutate(potential_bsa = if_else(fragment_match_count >=2, "is_BSA", "not_BSA"))
+
+label_bsa_match_counts_five_BSA_1 %>% group_by(potential_bsa) %>% tally()
+
+match_counts_five_BSA_2 <- match_five_BSA_2 %>% 
+  filter(!is.na(fragment_mz_matched)) %>% 
+  group_by(precursor_mz_matched) %>% 
+  summarise(fragment_match_count = n())
+
+label_bsa_match_counts_five_BSA_2 <- match_counts_five_BSA_2 %>% 
+  mutate(potential_bsa = if_else(fragment_match_count >=2, "is_BSA", "not_BSA"))
+
+label_bsa_match_counts_five_BSA_2 %>% group_by(potential_bsa) %>% tally()
+
+match_counts_fifty_BSA_1 <- match_fifty_BSA_1 %>% 
+  filter(!is.na(fragment_mz_matched)) %>% 
+  group_by(precursor_mz_matched) %>% 
+  summarise(fragment_match_count = n())
+
+label_bsa_match_counts_fifty_BSA_1 <- match_counts_fifty_BSA_1 %>% 
+  mutate(potential_bsa = if_else(fragment_match_count >=2, "is_BSA", "not_BSA"))
+
+label_bsa_match_counts_fifty_BSA_1 %>% group_by(potential_bsa) %>% tally()
+
+match_counts_fifty_BSA_2 <- match_fifty_BSA_2 %>% 
+  filter(!is.na(fragment_mz_matched)) %>% 
+  group_by(precursor_mz_matched) %>% 
+  summarise(fragment_match_count = n())
+
+label_bsa_match_counts_fifty_BSA_2 <- match_counts_fifty_BSA_2 %>% 
+  mutate(potential_bsa = if_else(fragment_match_count >=2, "is_BSA", "not_BSA"))
+
+label_bsa_match_counts_fifty_BSA_2 %>% group_by(potential_bsa) %>% tally()
+
+#Done for now!
+
+```
+
+
+
+
+
+
